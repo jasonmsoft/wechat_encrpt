@@ -5,6 +5,7 @@
                            android:accessibilityFlags="flagDefault"
                            android:canRetrieveWindowContent="true"
                            android:notificationTimeout="50"
+                           android:canRequestTouchExplorationMode="true"
                            android:settingsActivity="com.example.android.accessibility.ServiceSettingsActivity"
-                           android:packageNames="com.tencent.mm, jd.cdyjy.timline" />
+                           android:packageNames="com.tencent.mm" />
 

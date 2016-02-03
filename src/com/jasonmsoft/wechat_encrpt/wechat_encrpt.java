@@ -1,6 +1,7 @@
 package com.jasonmsoft.wechat_encrpt;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -104,6 +105,20 @@ public class wechat_encrpt extends AccessibilityService {
                 inputtype = "unknown";
         }
         return inputtype;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        if(getServiceInfo() != null)
+        {
+            Log.d(mTag, "touch explore mode");
+            getServiceInfo().flags = AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
+        }
+        else
+        {
+            Log.d(mTag, "can't open touch explore mode");
+        }
     }
 
     @Override
