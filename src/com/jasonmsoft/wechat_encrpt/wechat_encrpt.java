@@ -3,13 +3,17 @@ package com.jasonmsoft.wechat_encrpt;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.content.Intent;
+import android.graphics.PixelFormat;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.InputType;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 
@@ -21,6 +25,8 @@ public class wechat_encrpt extends AccessibilityService {
     private String mInputText = "";
     private int    mEffectMsgCount = 0;
     private ArrayList<AffectMsgObj> mEffectMsgList =  new ArrayList<AffectMsgObj>();
+    private HUDView mView;
+    private WindowManager.LayoutParams params;
 
 
     protected String getEventTypeName(int eventType)
@@ -110,15 +116,17 @@ public class wechat_encrpt extends AccessibilityService {
     @Override
     public void onCreate() {
         super.onCreate();
-        if(getServiceInfo() != null)
-        {
-            Log.d(mTag, "touch explore mode");
-            getServiceInfo().flags = AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
-        }
-        else
-        {
-            Log.d(mTag, "can't open touch explore mode");
-        }
+
+        Toast.makeText(getBaseContext(), "onCreate", Toast.LENGTH_LONG).show();
+        mView = new HUDView(this);
+        params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_PHONE, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.RIGHT | Gravity.TOP;
+        params.setTitle("Load Average");
+        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        wm.addView(mView, params);
+
     }
 
     @Override
@@ -337,6 +345,13 @@ public class wechat_encrpt extends AccessibilityService {
     public void onDestroy() {
 
         Log.d(mTag, "onDestroy");
+
+        Toast.makeText(getBaseContext(),"onDestroy", Toast.LENGTH_LONG).show();
+        if(mView != null)
+        {
+            ((WindowManager) getSystemService(WINDOW_SERVICE)).removeView(mView);
+            mView = null;
+        }
     }
 
     protected void onServiceConnected() {
