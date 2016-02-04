@@ -595,7 +595,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                                 if(child_child_node != null && child_child_class_name.equals("android.widget.TextView")) //msg timestamp
                                 {
                                     //timestamp or msg content
-                                    String content = child_child_node.getText().toString();
+                                    String content = child_child_node.getText() == null ?"null":child_child_node.getText().toString();
                                     if(isTimeStamp(content))
                                     {
                                         msg.mTimeStamp = content;
@@ -723,16 +723,28 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                 args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, mInputText.length());
                 if(mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args))
                 {
-                    mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_CUT);
-                    CharSequence oldData = mClipMgr.getPrimaryClip().getItemAt(0).getText();
-                    CharSequence  cd = mEncrypt_result;
-                    ClipData data = ClipData.newPlainText("result",cd);
-                    mClipMgr.setPrimaryClip(data);
-                    mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_PASTE);
-                    mClipMgr.setPrimaryClip(ClipData.newPlainText("data",oldData));
-                    mFloatView.setBackgroundResource(R.drawable.float_view_click);
-                    Log.d(mTag, "perform encrypto success!!!!!!");
+                    if(mEncrypt_result.isEmpty())
+                    {
+                        showMsg("加密失败!", 2000);
+                    }
+                    else
+                    {
+                        mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_CUT);
+                        CharSequence oldData = mClipMgr.getPrimaryClip().getItemAt(0).getText();
+                        CharSequence cd = mEncrypt_result;
+                        ClipData data = ClipData.newPlainText("result", cd);
+                        mClipMgr.setPrimaryClip(data);
+                        mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+                        mClipMgr.setPrimaryClip(ClipData.newPlainText("data", oldData));
+                        mFloatView.setBackgroundResource(R.drawable.float_view_click);
+                        Log.d(mTag, "perform encrypto success!!!!!!");
+                    }
                 }
+            }
+            else
+            {
+                Log.d(mTag, "no detect text");
+                showMsg("未检测到输入的文本", 2000);
             }
         }
         else if(message.what == MSG_FINISH_DECRPT)
@@ -766,11 +778,12 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                         String result = encrpto_utils.decryptDES(data.toString(), mDecryptoKey);
                         Log.d(mTag, "decrypto result:[" + result + "] ");
                         mDecrypt_result = result;
-                        Message msg = mHandle.obtainMessage(MSG_FINISH_DECRPT);
-                        mHandle.sendMessage(msg);
                     } catch (Exception e) {
+                        mDecrypt_result = "";
                         e.printStackTrace();
                     }
+                    Message msg = mHandle.obtainMessage(MSG_FINISH_DECRPT);
+                    mHandle.sendMessage(msg);
                 }
             });
         }
@@ -782,15 +795,22 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                     try {
 
                         if(mInputText.isEmpty() || mEncryptoKey.isEmpty())
-                            return;
-                        String result  = encrpto_utils.encryptDES(mInputText, mEncryptoKey);
-                        Log.d(mTag, "encrypto content:["+ mInputText +"] result:"+ result);
-                        mEncrypt_result = result;
-                        Message msg = mHandle.obtainMessage(MSG_FINISH_ENCRPT);
-                        mHandle.sendMessage(msg);
+                        {
+
+                            mEncrypt_result = "";
+                        }
+                        else {
+                            String result = encrpto_utils.encryptDES(mInputText, mEncryptoKey);
+                            Log.d(mTag, "encrypto content:[" + mInputText + "] result:" + result);
+                            mEncrypt_result = result;
+                        }
+
                     } catch (Exception e) {
+                        mEncrypt_result = "";
                         e.printStackTrace();
                     }
+                    Message msg = mHandle.obtainMessage(MSG_FINISH_ENCRPT);
+                    mHandle.sendMessage(msg);
                 }
             });
         }
@@ -809,6 +829,18 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
     {
         mFloatView3.setText(msg);
         mFloatLayout3.setVisibility(View.VISIBLE);
+    }
+
+    protected void showMsg(String msg, long delay)
+    {
+        showDecryptoMsg(msg);
+        addTimer(new TimerTask() {
+            @Override
+            public void run() {
+                Message msg = mHandle.obtainMessage(MSG_HIDDEN_DECRYPTO_MSG);
+                mHandle.sendMessage(msg);
+            }
+        }, delay);
     }
 
     protected void hiddenDecryptoMsg()
