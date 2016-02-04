@@ -193,7 +193,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
         params.format = PixelFormat.RGBA_8888;
         params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         params.x = 0;
-        params.y = 152;
+        params.y = 200;
         params.width = WindowManager.LayoutParams.WRAP_CONTENT;
         params.height = WindowManager.LayoutParams.WRAP_CONTENT;
         LayoutInflater inflater =  (LayoutInflater)LayoutInflater.from(this);
@@ -271,10 +271,6 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
             public void onClick(View v) {
                 Log.d(mTag, "click float float view");
 
-
-                //encrypto send message
-
-
             }
         });
     }
@@ -290,8 +286,8 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
         params2.type = WindowManager.LayoutParams.TYPE_PHONE;
         params2.format = PixelFormat.RGBA_8888;
         params2.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        params2.x = 0;
-        params2.y = 300;
+        params2.x = screen_utils.getScreenPixWidth(this) - 60;
+        params2.y = 200;
         params2.width = WindowManager.LayoutParams.WRAP_CONTENT;
         params2.height = WindowManager.LayoutParams.WRAP_CONTENT;
         LayoutInflater inflater =  (LayoutInflater)LayoutInflater.from(this);
@@ -372,10 +368,6 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
             {
                 Log.d(mTag, "click float float view");
 
-
-                //encrypto send message
-
-
             }
         });
     }
@@ -390,7 +382,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
         params3.type = WindowManager.LayoutParams.TYPE_PHONE;
         params3.format = PixelFormat.RGBA_8888;
         params3.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-        params3.x = screen_utils.getScreenPixWidth(this)/2 - 100;
+        params3.x = screen_utils.getScreenPixWidth(this)/2 - 200;
         params3.y = screen_utils.getScreenPixHeight(this)/2;
         params3.width = WindowManager.LayoutParams.WRAP_CONTENT;
         params3.height = WindowManager.LayoutParams.WRAP_CONTENT;

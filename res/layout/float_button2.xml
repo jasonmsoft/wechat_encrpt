@@ -6,9 +6,9 @@
 
     <ImageButton
             android:id="@+id/float_button2"
-            android:layout_width="50dp"
-            android:layout_height="20dp"
-            android:background="@drawable/float_view2_activate"
+            android:layout_width="60dp"
+            android:layout_height="30dp"
+            android:background="@drawable/float_view2_decrypto"
             android:contentDescription="@null"
             />
 </LinearLayout>
