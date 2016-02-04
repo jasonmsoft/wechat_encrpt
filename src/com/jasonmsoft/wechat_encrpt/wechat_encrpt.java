@@ -2,31 +2,99 @@ package com.jasonmsoft.wechat_encrpt;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.content.Intent;
+import android.annotation.SuppressLint;
+import android.content.*;
 import android.graphics.PixelFormat;
+import android.net.wifi.WifiConfiguration;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.text.InputType;
 import android.util.Log;
-import android.view.Gravity;
-import android.view.KeyEvent;
-import android.view.WindowManager;
+import android.view.*;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Created by cdmaji1 on 2016/2/2.
  */
-public class wechat_encrpt extends AccessibilityService {
+public class wechat_encrpt extends AccessibilityService implements Handler.Callback {
     private String mTag = wechat_encrpt.class.getSimpleName();
     private String mInputText = "";
     private int    mEffectMsgCount = 0;
     private ArrayList<AffectMsgObj> mEffectMsgList =  new ArrayList<AffectMsgObj>();
-    private HUDView mView;
+    private LinearLayout mFloatLayout;
+    private LinearLayout mFloatLayout2;
+    private LinearLayout mFloatLayout3;
     private WindowManager.LayoutParams params;
+    private WindowManager.LayoutParams params2;
+    private WindowManager.LayoutParams params3;
+    private WindowManager mWindowMgr;
+    private ImageButton mFloatView;
+    private ImageButton mFloatView2;
+    private TextView mFloatView3;
+    private static final int MSG_SHOW_FLOAT_VIEW = 0x01;
+    private static final int MSG_HIDE_FLOAT_VIEW = 0x02;
+    private static final int MSG_START_ENCRPT = 0x03;
+    private static final int MSG_FINISH_ENCRPT = 0x04;
+    private static final int MSG_FINISH_DECRPT = 0x05;
+    private static final int MSG_TIME_TO_ENCRYPT = 0x06;
+    private static final int MSG_TIME_TO_DECRYPT = 0x07;
+    private static final int MSG_HIDDEN_DECRYPTO_MSG = 0x08;
+    private Thread mWorkThread = null;
+    private boolean mIsStopThread = false;
+    private ArrayList<Runnable> mJobList = new ArrayList<Runnable>();
+    private Lock mJobListLock = new ReentrantLock();
+    private Handler mHandle = new Handler(this);
+    private String mEncryptoKey = "";
+    private String mDecryptoKey = "";
+    private DataReceiver mReceiver = null;
+    private long mStartTouchTime = 0;
+    private long mStopTouchTime = 0;
+    private long mStartTouchTime2 = 0;
+    private long mStopTouchTime2 = 0;
+    private String mEncrypt_result = "";
+    private String mDecrypt_result = "";
+    private AccessibilityNodeInfo mLastSendMsgNode = null; //输入框所在的节点
+    private ClipboardManager mClipMgr = null;
+    private Timer mTimerSchedule = new Timer(true);
+
+
+    public static final int CMD_STOP_SERVICE = 0x11;
+
+
+    private class DataReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.i(mTag, "接受要更新的广播数据="+intent.getIntExtra("cmd", -1));
+
+            int cmd = intent.getIntExtra("cmd", -1);
+            switch (cmd)
+            {
+                case CMD_STOP_SERVICE:
+                    Log.d(mTag, "stop service myself");
+                    stopSelf();
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
 
 
     protected String getEventTypeName(int eventType)
@@ -113,21 +181,275 @@ public class wechat_encrpt extends AccessibilityService {
         return inputtype;
     }
 
-    @Override
-    public void onCreate() {
-        super.onCreate();
 
-        Toast.makeText(getBaseContext(), "onCreate", Toast.LENGTH_LONG).show();
-        mView = new HUDView(this);
+    //显示加密浮动窗口
+    public void showFloatView()
+    {
         params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_PHONE, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.RIGHT | Gravity.TOP;
-        params.setTitle("Load Average");
-        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-        wm.addView(mView, params);
+        params.gravity = Gravity.LEFT | Gravity.TOP;
+        params.type = WindowManager.LayoutParams.TYPE_PHONE;
+        params.format = PixelFormat.RGBA_8888;
+        params.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params.x = 0;
+        params.y = 152;
+        params.width = WindowManager.LayoutParams.WRAP_CONTENT;
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        LayoutInflater inflater =  (LayoutInflater)LayoutInflater.from(this);
+        //获取浮动窗口视图所在布局
+        mFloatLayout = (LinearLayout) inflater.inflate(R.layout.float_button, null);
+        //添加mFloatLayout
+        mWindowMgr.addView(mFloatLayout, params);
+        //浮动窗口按钮
+        mFloatView = (ImageButton) mFloatLayout.findViewById(R.id.float_button);
+        mFloatLayout.measure(View.MeasureSpec.makeMeasureSpec(0,
+                View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
+                .makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 
+        //设置监听浮动窗口的触摸移动
+        mFloatView.setOnTouchListener(new View.OnTouchListener()
+        {
+            boolean isClick;
+            @SuppressLint("ClickableViewAccessibility") @Override
+            public boolean onTouch(View v, MotionEvent event) {
+
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        Log.d(mTag, "encrypto touch down");
+                        mFloatView.setBackgroundResource(R.drawable.float_view_activate);
+                        isClick = false;
+                        mStartTouchTime = System.currentTimeMillis();
+                        addTimer(new TimerTask() {
+                            @Override
+                            public void run() {
+                                Log.d(mTag, "encrypto start");
+                                if(mStopTouchTime < mStartTouchTime)
+                                    mStopTouchTime = System.currentTimeMillis();
+                                if(mStopTouchTime - mStartTouchTime >= 500)
+                                {
+                                    Log.d(mTag, "encrypto start action");
+                                    Message msg = mHandle.obtainMessage(MSG_TIME_TO_ENCRYPT);
+                                    mHandle.sendMessage(msg);
+                                }
+                                else
+                                {
+                                    Log.d(mTag, "touch interval :"+ (mStopTouchTime - mStartTouchTime));
+                                }
+                            }
+                        }, 500);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        mFloatView.setBackgroundResource(R.drawable.float_view_activate);
+                        isClick = true;
+                        // getRawX是触摸位置相对于屏幕的坐标，getX是相对于按钮的坐标
+                        params.x = (int) event.getRawX()
+                                - mFloatView.getMeasuredWidth() / 2;
+                        // 减25为状态栏的高度
+                        params.y = (int) event.getRawY()
+                                - mFloatView.getMeasuredHeight() / 2 - 75;
+                        // 刷新
+                        mWindowMgr.updateViewLayout(mFloatLayout, params);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        //按住超过500ms则认为需要进行加密
+                        Log.d(mTag, "encrypto touch up");
+                        mStopTouchTime = System.currentTimeMillis();
+                        mFloatView.setBackgroundResource(R.drawable.float_view_no_activate);
+                        return isClick;// 此处返回false则属于移动事件，返回true则释放事件，可以出发点击否。
+
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+
+        mFloatView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.d(mTag, "click float float view");
+
+
+                //encrypto send message
+
+
+            }
+        });
     }
+
+
+    //显示解密浮动窗口
+    protected void showFloatView2()
+    {
+        params2 = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_PHONE, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
+        params2.gravity = Gravity.LEFT | Gravity.TOP;
+        params2.type = WindowManager.LayoutParams.TYPE_PHONE;
+        params2.format = PixelFormat.RGBA_8888;
+        params2.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params2.x = 0;
+        params2.y = 300;
+        params2.width = WindowManager.LayoutParams.WRAP_CONTENT;
+        params2.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        LayoutInflater inflater =  (LayoutInflater)LayoutInflater.from(this);
+        //获取浮动窗口视图所在布局
+        mFloatLayout2 = (LinearLayout) inflater.inflate(R.layout.float_button2, null);
+
+        //添加mFloatLayout
+        mWindowMgr.addView(mFloatLayout2, params2);
+        //浮动窗口按钮
+        mFloatView2 = (ImageButton) mFloatLayout2.findViewById(R.id.float_button2);
+        mFloatLayout2.measure(View.MeasureSpec.makeMeasureSpec(0,
+                View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
+                .makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+        //设置监听浮动窗口的触摸移动
+        mFloatView2.setOnTouchListener(new View.OnTouchListener()
+        {
+            boolean isClick;
+            @SuppressLint("ClickableViewAccessibility") @Override
+            public boolean onTouch(View v, MotionEvent event) {
+
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        Log.d(mTag, "decrypto touch down");
+                        mFloatView2.setBackgroundResource(R.drawable.float_view2_activate);
+                        isClick = false;
+                        mStartTouchTime2 = System.currentTimeMillis();
+                        addTimer(new TimerTask() {
+                            @Override
+                            public void run() {
+                                Log.d(mTag, "decrypto start");
+                                if(mStopTouchTime2 < mStartTouchTime2)
+                                    mStopTouchTime2 = System.currentTimeMillis();
+                                if(mStopTouchTime2 - mStartTouchTime2 >= 500)
+                                {
+                                    Log.d(mTag, "decrypto start action");
+                                    Message msg = mHandle.obtainMessage(MSG_TIME_TO_DECRYPT);
+                                    mHandle.sendMessage(msg);
+                                }
+                                else
+                                {
+                                    Log.d(mTag, "touch interval :"+ (mStopTouchTime2 - mStartTouchTime2));
+                                }
+                            }
+                        }, 500);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        mFloatView2.setBackgroundResource(R.drawable.float_view2_activate);
+                        isClick = true;
+                        // getRawX是触摸位置相对于屏幕的坐标，getX是相对于按钮的坐标
+                        params2.x = (int) event.getRawX()
+                                - mFloatView2.getMeasuredWidth() / 2;
+                        // 减25为状态栏的高度
+                        params2.y = (int) event.getRawY()
+                                - mFloatView2.getMeasuredHeight() / 2 - 75;
+                        // 刷新
+                        mWindowMgr.updateViewLayout(mFloatLayout2, params2);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        //按住超过500ms则认为需要进行加密
+                        Log.d(mTag, "decrypto touch up");
+                        mStopTouchTime2 = System.currentTimeMillis();
+                        mFloatView2.setBackgroundResource(R.drawable.float_view2_activate);
+                        return isClick;// 此处返回false则属于移动事件，返回true则释放事件，可以出发点击否。
+
+                    default:
+                        break;
+                }
+                return false;
+            }
+        });
+
+
+        mFloatView2.setOnClickListener(new View.OnClickListener()
+        {
+            @Override
+            public void onClick(View v)
+            {
+                Log.d(mTag, "click float float view");
+
+
+                //encrypto send message
+
+
+            }
+        });
+    }
+
+
+    protected void loadMsgWindow()
+    {
+        params3 = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_PHONE, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
+        params3.gravity = Gravity.LEFT | Gravity.TOP;
+        params3.type = WindowManager.LayoutParams.TYPE_PHONE;
+        params3.format = PixelFormat.RGBA_8888;
+        params3.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+        params3.x = screen_utils.getScreenPixWidth(this)/2 - 100;
+        params3.y = screen_utils.getScreenPixHeight(this)/2;
+        params3.width = WindowManager.LayoutParams.WRAP_CONTENT;
+        params3.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        LayoutInflater inflater =  (LayoutInflater)LayoutInflater.from(this);
+        //获取浮动窗口视图所在布局
+        mFloatLayout3 = (LinearLayout) inflater.inflate(R.layout.decrypto_msg_window, null);
+
+        //添加mFloatLayout
+        mWindowMgr.addView(mFloatLayout3, params3);
+        //浮动窗口按钮
+        mFloatView3 = (TextView) mFloatLayout3.findViewById(R.id.decrypto_msg_txt);
+        mFloatLayout2.measure(View.MeasureSpec.makeMeasureSpec(0,
+                View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
+                .makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        mFloatLayout3.setVisibility(View.INVISIBLE);
+    }
+
+
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.d(mTag, "create encrpto service!!!!!!!!!!!!!!!!!!!!!");
+        mReceiver = new DataReceiver();
+        IntentFilter intentfilter=new IntentFilter();
+        intentfilter.addAction("wechat_encrpt");
+        registerReceiver(mReceiver, intentfilter);
+
+        mClipMgr = (ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+        mWindowMgr = (WindowManager) getSystemService(this.WINDOW_SERVICE);
+
+        mWorkThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                    while(!mIsStopThread)
+                    {
+                        Runnable job = null;
+                        if((job = getJob()) != null)
+                        {
+                            Log.d(mTag, "get a job to execute");
+                            job.run();
+                        }
+                        else
+                        {
+                            try
+                            {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                Log.d(mTag, "quit from job thread");
+            }
+        });
+        mWorkThread.start();
+    }
+
+
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent accessibilityEvent) {
@@ -146,9 +468,12 @@ public class wechat_encrpt extends AccessibilityService {
 
         eventName = eventName + ":" + eventType +"  node class:"+ node.getClassName().toString();
         Log.i(mTag, eventName);
-        if((eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) && ((iInputType & InputType.TYPE_CLASS_TEXT) != 0))
+        if((node.getClassName().toString().equals("android.widget.EditText") && ((iInputType & InputType.TYPE_CLASS_TEXT) != 0)))
         {
             mInputText = text;
+            mLastSendMsgNode = node;
+            boolean isEdit = node.isEditable();
+            Log.d(mTag, "Input text is : "+ mInputText + " node:"+ mLastSendMsgNode.getClassName().toString() + " editable:"+ isEdit);
         }
 
 
@@ -157,21 +482,10 @@ public class wechat_encrpt extends AccessibilityService {
             if(text != null && text.equals("发送"))
             {
                 Bundle args = new Bundle();
-                args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 1);
-                args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, -1);
 
                 int windowid = node.getWindowId();
-
                 AccessibilityNodeInfo parent = node.getParent();
                 String className = node.getClassName().toString();
-
-                //Log.d(mTag, "send Text: "+mInputText + " windowid:"+ windowid + " parent windowid:"+ parent.getWindowId() +
-                 //       " "+className);
-
-                //noteInfo.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args);
-
-
-                //noteInfo.performAction(AccessibilityNodeInfo.ACTION_CUT);
                 String rn = node.getViewIdResourceName();
                 if(rn != null)
                 {
@@ -332,6 +646,7 @@ public class wechat_encrpt extends AccessibilityService {
     @Override
     public void onInterrupt() {
         Log.d(mTag, "onInterrupt");
+        removeFloatView();
     }
 
 
@@ -339,32 +654,51 @@ public class wechat_encrpt extends AccessibilityService {
     public int onStartCommand(Intent intent, int flags, int startId) {
 
         Log.d(mTag, "start command  flags:"+flags + " startid: "+startId );
+
+        mEncryptoKey = intent.getStringExtra("encrypto_key");
+        mDecryptoKey = intent.getStringExtra("decrypto_key");
+
         return START_NOT_STICKY;
+    }
+
+    protected void addTimer(TimerTask task, long delay)
+    {
+        mTimerSchedule.schedule(task, delay);
     }
 
     public void onDestroy() {
 
         Log.d(mTag, "onDestroy");
+        unregisterReceiver(mReceiver);
+        Message msg = mHandle.obtainMessage(MSG_HIDE_FLOAT_VIEW);
+        mHandle.sendMessage(msg);
+        mIsStopThread = true;
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        mTimerSchedule.cancel();
+    }
 
-        Toast.makeText(getBaseContext(),"onDestroy", Toast.LENGTH_LONG).show();
-        if(mView != null)
+    protected void removeFloatView()
+    {
+        if(mFloatLayout != null)
         {
-            ((WindowManager) getSystemService(WINDOW_SERVICE)).removeView(mView);
-            mView = null;
+            //移除悬浮窗口
+            mWindowMgr.removeView(mFloatLayout);
+            mWindowMgr.removeView(mFloatView2);
         }
     }
 
     protected void onServiceConnected() {
         super.onServiceConnected();
         Log.d(mTag, "onServiceConnected");
+
+        Message msg = mHandle.obtainMessage(MSG_SHOW_FLOAT_VIEW);
+        mHandle.sendMessage(msg);
     }
 
-    protected boolean onGesture(int gestureId)
-    {
-        super.onGesture(gestureId);
-        Log.d(mTag, "onGesture");
-        return true;
-    }
 
 
     protected boolean onKeyEvent(KeyEvent event)
@@ -373,5 +707,145 @@ public class wechat_encrpt extends AccessibilityService {
         return true;
     }
 
+
+    @Override
+    public boolean handleMessage(Message message) {
+        Log.d(mTag, "handle message : "+ message.what);
+        if(message.what == MSG_SHOW_FLOAT_VIEW)
+        {
+            showFloatView();
+            showFloatView2();
+            loadMsgWindow();
+        }
+        else if(message.what == MSG_HIDE_FLOAT_VIEW)
+        {
+            removeFloatView();
+        }
+        else if(message.what == MSG_FINISH_ENCRPT)
+        {
+            //加密完毕
+            if(mLastSendMsgNode != null)
+            {
+                Bundle args = new Bundle();
+                args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0);
+                args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, mInputText.length());
+                if(mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, args))
+                {
+                    mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_CUT);
+                    CharSequence oldData = mClipMgr.getPrimaryClip().getItemAt(0).getText();
+                    CharSequence  cd = mEncrypt_result;
+                    ClipData data = ClipData.newPlainText("result",cd);
+                    mClipMgr.setPrimaryClip(data);
+                    mLastSendMsgNode.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+                    mClipMgr.setPrimaryClip(ClipData.newPlainText("data",oldData));
+                    mFloatView.setBackgroundResource(R.drawable.float_view_click);
+                    Log.d(mTag, "perform encrypto success!!!!!!");
+                }
+            }
+        }
+        else if(message.what == MSG_FINISH_DECRPT)
+        {
+            Log.d(mTag, "finish decrypto :"+ mDecrypt_result);
+            if(!mDecrypt_result.isEmpty())
+            {
+                showDecryptoMsg(mDecrypt_result);
+            }
+            else
+            {
+                showDecryptoMsg("解密失败,请检查解密秘钥");
+            }
+            addTimer(new TimerTask() {
+                @Override
+                public void run() {
+                    Message msg = mHandle.obtainMessage(MSG_HIDDEN_DECRYPTO_MSG);
+                    mHandle.sendMessage(msg);
+                }
+            }, 3000);
+
+        }
+        else if(message.what == MSG_TIME_TO_DECRYPT)
+        {
+            Log.d(mTag, "time to decrypto");
+            addJob(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        CharSequence data = mClipMgr.getPrimaryClip().getItemAt(0).getText();
+                        String result = encrpto_utils.decryptDES(data.toString(), mDecryptoKey);
+                        Log.d(mTag, "decrypto result:[" + result + "] ");
+                        mDecrypt_result = result;
+                        Message msg = mHandle.obtainMessage(MSG_FINISH_DECRPT);
+                        mHandle.sendMessage(msg);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+        }
+        else if(message.what == MSG_TIME_TO_ENCRYPT)
+        {
+            addJob(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+
+                        if(mInputText.isEmpty() || mEncryptoKey.isEmpty())
+                            return;
+                        String result  = encrpto_utils.encryptDES(mInputText, mEncryptoKey);
+                        Log.d(mTag, "encrypto content:["+ mInputText +"] result:"+ result);
+                        mEncrypt_result = result;
+                        Message msg = mHandle.obtainMessage(MSG_FINISH_ENCRPT);
+                        mHandle.sendMessage(msg);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+        }
+        else if(message.what == MSG_HIDDEN_DECRYPTO_MSG)
+        {
+            hiddenDecryptoMsg();
+        }
+        else
+        {
+            Log.d(mTag, "last send msg node is null");
+        }
+        return false;
+    }
+
+    protected void showDecryptoMsg(String msg)
+    {
+        mFloatView3.setText(msg);
+        mFloatLayout3.setVisibility(View.VISIBLE);
+    }
+
+    protected void hiddenDecryptoMsg()
+    {
+        mFloatLayout3.setVisibility(View.INVISIBLE);
+    }
+
+
+
+    protected void addJob(Runnable job)
+    {
+        mJobListLock.lock();
+        Log.d(mTag, "add a job");
+        mJobList.add(job);
+        mJobListLock.unlock();
+    }
+
+    protected Runnable getJob()
+    {
+        Runnable job = null;
+        mJobListLock.lock();
+        if(mJobList.size() > 0)
+        {
+            Log.d(mTag, "get a job");
+            job = mJobList.get(0);
+            mJobList.remove(job);
+        }
+        mJobListLock.unlock();
+        return job;
+    }
 
 }
