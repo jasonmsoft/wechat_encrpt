@@ -335,7 +335,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                         }, 500);
                         break;
                     case MotionEvent.ACTION_MOVE:
-                        mFloatView2.setBackgroundResource(R.drawable.float_view2_activate);
+                        mFloatView2.setBackgroundResource(R.drawable.float_view2_decrypto);
                         isClick = true;
                         // getRawX是触摸位置相对于屏幕的坐标，getX是相对于按钮的坐标
                         params2.x = (int) event.getRawX()
@@ -350,7 +350,6 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                         //按住超过500ms则认为需要进行加密
                         Log.d(mTag, "decrypto touch up");
                         mStopTouchTime2 = System.currentTimeMillis();
-                        mFloatView2.setBackgroundResource(R.drawable.float_view2_activate);
                         return isClick;// 此处返回false则属于移动事件，返回true则释放事件，可以出发点击否。
 
                     default:
@@ -752,19 +751,13 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
             Log.d(mTag, "finish decrypto :"+ mDecrypt_result);
             if(!mDecrypt_result.isEmpty())
             {
-                showDecryptoMsg(mDecrypt_result);
+                showMsg(mDecrypt_result, 6000);
             }
             else
             {
-                showDecryptoMsg("解密失败,请检查解密秘钥");
+                showMsg("解密失败,请检查解密秘钥", 3000);
             }
-            addTimer(new TimerTask() {
-                @Override
-                public void run() {
-                    Message msg = mHandle.obtainMessage(MSG_HIDDEN_DECRYPTO_MSG);
-                    mHandle.sendMessage(msg);
-                }
-            }, 3000);
+            mFloatLayout3.setBackgroundResource(R.drawable.float_view2_decrypto);
 
         }
         else if(message.what == MSG_TIME_TO_DECRYPT)
