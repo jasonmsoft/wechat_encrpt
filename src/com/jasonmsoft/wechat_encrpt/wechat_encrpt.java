@@ -99,6 +99,8 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
 
 
 
+
+
     protected String getEventTypeName(int eventType)
     {
         String eventText = "";
@@ -733,7 +735,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
                 {
                     if(mEncrypt_result.isEmpty())
                     {
-                        showMsg("加密失败!", 2000);
+                        showMsg("加密失败,请检查您的秘钥是否已经设置", 2000);
                     }
                     else
                     {
@@ -801,7 +803,8 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
 
                             mEncrypt_result = "";
                         }
-                        else {
+                        else
+                        {
                             String result = encrpto_utils.encryptDES(mInputText, mEncryptoKey);
                             Log.d(mTag, "encrypto content:[" + mInputText + "] result:" + result);
                             mEncrypt_result = result;
