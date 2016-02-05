@@ -147,8 +147,7 @@ public class MainActivity extends Activity  implements Handler.Callback {
     {
         Log.d("MainActivity", "on close click!");
 
-        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-        startActivity(intent);
+
 
         Intent intent2 = new Intent();
         intent2.setAction("wechat_encrpt");
