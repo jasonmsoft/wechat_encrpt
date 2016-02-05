@@ -71,6 +71,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
     private AccessibilityNodeInfo mLastSendMsgNode = null; //输入框所在的节点
     private ClipboardManager mClipMgr = null;
     private Timer mTimerSchedule = new Timer(true);
+    private boolean mHasRemovedFloatView = true;
 
 
     public static final int CMD_STOP_SERVICE = 0x11;
@@ -87,6 +88,7 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
             {
                 case CMD_STOP_SERVICE:
                     Log.d(mTag, "stop service myself");
+                    removeFloatView();
                     stopSelf();
                     break;
                 default:
@@ -637,7 +639,8 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
     @Override
     public void onInterrupt() {
         Log.d(mTag, "onInterrupt");
-        removeFloatView();
+        Message msg = mHandle.obtainMessage(MSG_HIDE_FLOAT_VIEW);
+        mHandle.sendMessage(msg);
     }
 
 
@@ -661,8 +664,9 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
 
         Log.d(mTag, "onDestroy");
         unregisterReceiver(mReceiver);
-        Message msg = mHandle.obtainMessage(MSG_HIDE_FLOAT_VIEW);
-        mHandle.sendMessage(msg);
+        //Message msg = mHandle.obtainMessage(MSG_HIDE_FLOAT_VIEW);
+        //mHandle.sendMessage(msg);
+        //removeFloatView();
         mIsStopThread = true;
         try {
             Thread.sleep(500);
@@ -674,11 +678,14 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
 
     protected void removeFloatView()
     {
-        if(mFloatLayout != null)
+        if(mFloatLayout != null && !mHasRemovedFloatView)
         {
+            Log.d(mTag, "remove float view");
             //移除悬浮窗口
             mWindowMgr.removeView(mFloatLayout);
-            mWindowMgr.removeView(mFloatView2);
+            mWindowMgr.removeView(mFloatLayout2);
+            mWindowMgr.removeView(mFloatLayout3);
+            mHasRemovedFloatView = true;
         }
     }
 
@@ -707,6 +714,8 @@ public class wechat_encrpt extends AccessibilityService implements Handler.Callb
             showFloatView();
             showFloatView2();
             loadMsgWindow();
+
+            mHasRemovedFloatView = false;
         }
         else if(message.what == MSG_HIDE_FLOAT_VIEW)
         {
